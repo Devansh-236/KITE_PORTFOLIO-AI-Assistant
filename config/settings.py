@@ -36,6 +36,3 @@ def check_config():
     
     print("✅ All required environment variables are configured!")
     return True
-
-if __name__ == "__main__":
-    check_config()

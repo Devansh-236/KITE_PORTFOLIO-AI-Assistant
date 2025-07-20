@@ -1,39 +1,46 @@
+# agents/fetcher_agent.py
 import logging
 from typing import Dict, Any
 from kite_api.connector import kite_connector
+import time
 
 logger = logging.getLogger(__name__)
 
 class PortfolioFetcherAgent:
-    """Agent responsible for fetching portfolio data from Kite API"""
+    """Enhanced agent for fetching comprehensive portfolio data from Kite API"""
     
     def __init__(self, name: str = "PortfolioFetcherAgent"):
         self.name = name
         self.connector = kite_connector
     
     def execute(self) -> Dict[str, Any]:
-        """Fetch complete portfolio data"""
-        logger.info(f"{self.name}: Starting portfolio data fetch...")
+        """Fetch comprehensive portfolio data with enhanced error handling"""
+        logger.info(f"{self.name}: Starting comprehensive portfolio data fetch...")
         
         try:
-            # Fetch all required data
-            profile = self.connector.get_profile()
-            holdings = self.connector.get_holdings()
-            positions = self.connector.get_positions()
-            margins = self.connector.get_margins()
+            # Fetch all required data with retry mechanism
+            data_sources = {
+                'profile': self._fetch_with_retry(self.connector.get_profile),
+                'holdings': self._fetch_with_retry(self.connector.get_holdings),
+                'positions': self._fetch_with_retry(self.connector.get_positions),
+                'margins': self._fetch_with_retry(self.connector.get_margins)
+            }
             
-            # Compile portfolio data
+            # Validate critical data
+            if not data_sources['holdings']:
+                logger.warning("No holdings data retrieved")
+            
+            # Compile comprehensive portfolio data
             portfolio_data = {
-                'profile': profile,
-                'holdings': holdings,
-                'positions': positions,
-                'margins': margins,
+                **data_sources,
                 'timestamp': self._get_timestamp(),
+                'data_quality': self._assess_data_quality(data_sources),
                 'status': 'success'
             }
             
             logger.info(f"{self.name}: Successfully fetched portfolio data")
-            logger.info(f"Holdings: {len(holdings)}, Net Positions: {len(positions.get('net', []))}")
+            logger.info(f"Holdings: {len(data_sources['holdings'])}, "
+                       f"Net Positions: {len(data_sources['positions'].get('net', []))}")
             
             return portfolio_data
             
@@ -44,6 +51,40 @@ class PortfolioFetcherAgent:
                 'error': str(e),
                 'timestamp': self._get_timestamp()
             }
+    
+    def _fetch_with_retry(self, fetch_function, max_retries: int = 3) -> Any:
+        """Fetch data with retry mechanism"""
+        for attempt in range(max_retries):
+            try:
+                return fetch_function()
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                logger.warning(f"Fetch attempt {attempt + 1} failed: {e}")
+                time.sleep(1)  # Wait before retry
+        return {}
+    
+    def _assess_data_quality(self, data_sources: Dict) -> Dict[str, str]:
+        """Assess quality of fetched data"""
+        quality = {}
+        
+        # Check holdings data
+        holdings = data_sources.get('holdings', [])
+        quality['holdings'] = 'Good' if len(holdings) > 0 else 'Poor'
+        
+        # Check positions data
+        positions = data_sources.get('positions', {})
+        quality['positions'] = 'Good' if positions.get('net') else 'Poor'
+        
+        # Check profile data
+        profile = data_sources.get('profile', {})
+        quality['profile'] = 'Good' if profile.get('user_name') else 'Poor'
+        
+        # Check margins data
+        margins = data_sources.get('margins', {})
+        quality['margins'] = 'Good' if margins.get('equity') else 'Poor'
+        
+        return quality
     
     def _get_timestamp(self) -> str:
         """Get current timestamp"""

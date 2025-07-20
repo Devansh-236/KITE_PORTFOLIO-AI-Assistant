@@ -1,7 +1,7 @@
+# main.py - Updated version with preference agent
 #!/usr/bin/env python3
 """
-Portfolio Analysis Multi-Agent System
-Main orchestration script for running the complete analysis pipeline
+Portfolio Analysis Multi-Agent System with User Preference Collection
 """
 
 import logging
@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from config.settings import check_config
+from agents.preference_agent import UserPreferenceAgent
 from agents.fetcher_agent import PortfolioFetcherAgent
 from agents.analyzer_agent import DataAnalyzerAgent  
 from agents.suggestion_agent import SuggestionEngineAgent
@@ -32,17 +33,28 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 class PortfolioAnalysisOrchestrator:
-    """Main orchestrator for the multi-agent portfolio analysis system"""
+    """Main orchestrator with user preference collection"""
     
     def __init__(self):
+        self.preference_agent = UserPreferenceAgent()
         self.fetcher = PortfolioFetcherAgent()
         self.analyzer = DataAnalyzerAgent()
         self.suggester = SuggestionEngineAgent()
         self.reporter = ReportGeneratorAgent()
     
     def run_analysis(self):
-        """Execute complete portfolio analysis workflow"""
-        console.print(Panel.fit("🚀 Portfolio Analysis Multi-Agent System", style="bold blue"))
+        """Execute complete portfolio analysis workflow with preference collection"""
+        console.print(Panel.fit("🚀 Personalized Portfolio Analysis Multi-Agent System", style="bold blue"))
+        
+        # Step 0: Collect User Preferences (New!)
+        console.print("\n🎯 Step 1: Collecting Your Investment Preferences", style="bold yellow")
+        user_preferences = self.preference_agent.execute()
+        
+        if user_preferences.get('status') != 'success':
+            console.print("❌ Preference collection failed or was cancelled", style="bold red")
+            return False
+        
+        console.print("✅ User preferences collected successfully!")
         
         with Progress(
             SpinnerColumn(),
@@ -73,26 +85,39 @@ class PortfolioAnalysisOrchestrator:
             
             self._display_analysis_summary(analysis_result)
             
-            # Step 3: Generate Suggestions
-            task3 = progress.add_task("Generating investment suggestions...", total=None)
-            suggestions_result = self.suggester.execute(analysis_result)
+            # Step 3: Generate Personalized Suggestions
+            task3 = progress.add_task("Generating personalized suggestions...", total=None)
+            suggestions_result = self.suggester.execute(analysis_result, user_preferences)
             progress.update(task3, completed=True)
-            
+
             if suggestions_result.get('status') != 'success':
                 console.print("❌ Suggestion generation failed", style="bold red")
+                # Print debug info to see what went wrong
+                console.print(f"Debug: Suggestions error - {suggestions_result.get('error', 'Unknown error')}")
                 return False
-            
+
+            # Debug: Check if suggestions were generated
+            console.print(f"🔍 Debug: Suggestions status - {suggestions_result.get('status')}")
+
             # Step 4: Generate Report
-            task4 = progress.add_task("Generating comprehensive report...", total=None)
-            report_result = self.reporter.execute(analysis_result, suggestions_result)
-            progress.update(task4, completed=True)
-            
-            if report_result.get('status') != 'success':
-                console.print("❌ Report generation failed", style="bold red")
+            task4 = progress.add_task("Generating personalized report...", total=None)
+            try:
+                report_result = self.reporter.execute(analysis_result, suggestions_result)
+                progress.update(task4, completed=True)
+                
+                if report_result.get('status') != 'success':
+                    console.print("❌ Report generation failed", style="bold red")
+                    console.print(f"Debug: Report error - {report_result.get('error', 'Unknown error')}")
+                    return False
+                    
+            except Exception as e:
+                console.print(f"❌ Report generation exception: {e}", style="bold red")
+                logger.exception("Report generation failed")
                 return False
-            
-            self._display_completion_summary(report_result)
+
+            self._display_completion_summary(report_result, user_preferences)
             return True
+
     
     def _display_portfolio_summary(self, portfolio_data):
         """Display portfolio fetch summary"""
@@ -104,7 +129,7 @@ class PortfolioAnalysisOrchestrator:
     def _display_analysis_summary(self, analysis_result):
         """Display analysis summary"""
         analysis = analysis_result.get('analysis', {})
-        summary = analysis.get('summary', {})
+        summary = analysis.get('executive_summary', {})
         
         if summary:
             table = Table(title="Portfolio Summary")
@@ -120,16 +145,27 @@ class PortfolioAnalysisOrchestrator:
         
         console.print("✅ Portfolio analysis completed")
     
-    def _display_completion_summary(self, report_result):
-        """Display completion summary"""
+    def _display_completion_summary(self, report_result, user_preferences):
+        """Display completion summary with personalization info"""
         filename = report_result.get('filename', 'Unknown')
         
+        # Display user goal alignment
+        goals = user_preferences.get('investment_goals', {})
+        primary_goal = goals.get('primary_goal', 'Wealth Creation')
+        
         console.print(Panel(
-            f"📊 Analysis Complete!\n\n"
-            f"Report saved as: [bold green]{filename}[/bold green]\n"
-            f"Location: [cyan]reports/{filename}[/cyan]\n\n"
-            f"Open the file to view your complete portfolio analysis and recommendations.",
-            title="🎉 Success",
+            f"📊 Personalized Analysis Complete!\n\n"
+            f"🎯 **Tailored for your goal:** {primary_goal}\n"
+            f"📋 **Report saved as:** [bold green]{filename}[/bold green]\n"
+            f"📂 **Location:** [cyan]reports/{filename}[/cyan]\n"
+            f"⚙️ **Preferences saved** for future analysis\n\n"
+            f"Your recommendations are specifically customized based on:\n"
+            f"• Your risk tolerance and investment horizon\n"
+            f"• Sector preferences and constraints\n" 
+            f"• Budget and corpus addition plans\n"
+            f"• Existing portfolio handling preference\n\n"
+            f"Open the report to view your personalized portfolio strategy!",
+            title="🎉 Personalized Success",
             style="bold green"
         ))
 
@@ -146,7 +182,7 @@ def main():
         success = orchestrator.run_analysis()
         
         if success:
-            console.print("\n🎯 Portfolio analysis completed successfully!")
+            console.print("\n🎯 Personalized portfolio analysis completed successfully!")
             return 0
         else:
             console.print("\n❌ Portfolio analysis failed!")

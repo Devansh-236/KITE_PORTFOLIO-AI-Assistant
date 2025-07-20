@@ -1,23 +1,24 @@
-# agents/suggestion_agent.py
+# agents/suggestion_agent.py - Enhanced version
 import logging
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from config.settings import Config
 from utils.api_handler import gemini_handler
+from agents.preference_agent import UserPreferenceAgent
 
 logger = logging.getLogger(__name__)
 
 class SuggestionEngineAgent:
-    """Enhanced suggestion agent with robust JSON parsing"""
+    """Enhanced suggestion agent that uses user preferences for personalized recommendations"""
     
     def __init__(self, name: str = "SuggestionEngineAgent"):
         self.name = name
         self.config = Config()
     
-    def execute(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate investment suggestions with robust parsing"""
-        logger.info(f"{self.name}: Generating investment suggestions...")
+    def execute(self, analysis_data: Dict[str, Any], user_preferences: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Generate personalized investment suggestions based on analysis and preferences"""
+        logger.info(f"{self.name}: Generating personalized investment suggestions...")
         
         if analysis_data.get('status') != 'success':
             return {
@@ -27,123 +28,297 @@ class SuggestionEngineAgent:
         
         try:
             analysis = analysis_data.get('analysis', {})
-            investment_profile = self.config.INVESTMENT_PROFILE
             
-            # Create simplified suggestion prompt
-            prompt = self._create_robust_suggestion_prompt(analysis, investment_profile)
+            # Load user preferences
+            if not user_preferences:
+                user_preferences = UserPreferenceAgent.load_latest_preferences()
+                if not user_preferences:
+                    logger.warning("No user preferences found, using default profile")
+                    user_preferences = self._get_default_preferences()
+            
+            # Create personalized suggestion prompt
+            prompt = self._create_personalized_suggestion_prompt(analysis, user_preferences)
             
             # Generate suggestions using rate-limited handler
             suggestions_text = gemini_handler.generate_content_with_retry(prompt)
             
             if not suggestions_text:
-                return self._create_fallback_suggestions_response(analysis, "No API response")
+                return self._create_fallback_suggestions_response(analysis, user_preferences, "No API response")
             
             # Parse suggestions with robust error handling
-            suggestions_result = self._robust_suggestions_parse(suggestions_text, analysis)
+            suggestions_result = self._robust_suggestions_parse(suggestions_text, analysis, user_preferences)
             
-            logger.info(f"{self.name}: Suggestions generated successfully")
+            # Add user preferences to response
+            suggestions_result['user_preferences_applied'] = user_preferences
+            
+            logger.info(f"{self.name}: Personalized suggestions generated successfully")
             
             return {
                 'status': 'success',
                 'suggestions': suggestions_result,
-                'raw_suggestions': suggestions_text[:500],  # Truncate for logs
+                'raw_suggestions': suggestions_text[:500],
                 'timestamp': self._get_timestamp()
             }
             
         except Exception as e:
             logger.error(f"{self.name}: Suggestion generation error: {e}")
             analysis = analysis_data.get('analysis', {})
-            return self._create_fallback_suggestions_response(analysis, str(e))
+            return self._create_fallback_suggestions_response(analysis, user_preferences or {}, str(e))
     
-    def _create_robust_suggestion_prompt(self, analysis: dict, investment_profile: str) -> str:
-        """Create robust suggestion prompt with clear structure"""
+    def _create_personalized_suggestion_prompt(self, analysis: dict, preferences: dict) -> str:
+        """Create personalized suggestion prompt based on user preferences"""
         exec_summary = analysis.get('executive_summary', {})
         
-        total_investment = exec_summary.get('total_investment', 0)
-        pnl_pct = exec_summary.get('total_pnl_percentage', 0)
-        holdings_count = exec_summary.get('number_of_holdings', 0)
+        # Extract user preferences
+        goals = preferences.get('investment_goals', {})
+        risk_prefs = preferences.get('risk_preferences', {})
+        portfolio_prefs = preferences.get('portfolio_preferences', {})
+        constraints = preferences.get('constraints', {})
+        basic_info = preferences.get('basic_info', {})
         
         return f"""
-You are an investment advisor. Provide suggestions in ONLY valid JSON format with no additional text.
+You are a personalized investment advisor. Create investment suggestions based on the portfolio analysis AND the specific user preferences provided.
 
-PORTFOLIO STATUS:
-Investment: ₹{total_investment:.0f}
-P&L: {pnl_pct:+.2f}%
-Holdings: {holdings_count}
-Profile: {investment_profile}
+PORTFOLIO ANALYSIS:
+- Investment: ₹{exec_summary.get('total_investment', 0):.0f}
+- P&L: {exec_summary.get('total_pnl_percentage', 0):+.2f}%
+- Holdings: {exec_summary.get('number_of_holdings', 0)}
 
-Main Issues: {'High concentration risk' if holdings_count < 3 else 'Portfolio needs optimization'}
+USER PROFILE & PREFERENCES:
+- Age: {basic_info.get('age', 'N/A')} | Experience: {basic_info.get('experience_level', 'N/A')}
+- Primary Goal: {goals.get('primary_goal', 'Wealth Creation')}
+- Time Horizon: {goals.get('time_horizon', 'Long-term')}
+- Risk Tolerance: {risk_prefs.get('risk_tolerance', 'Moderate')}
+- Expected Return: {goals.get('expected_return', 12)}%
+- Equity Preference: {portfolio_prefs.get('preferred_equity_allocation', 70)}%
+- Monthly Addition: ₹{goals.get('monthly_addition', 0)}
+- Additional Budget: ₹{constraints.get('additional_investment_budget', 0)}
+- Preferred Sectors: {', '.join(portfolio_prefs.get('preferred_sectors', []))}
+- Avoid Sectors: {', '.join(constraints.get('avoid_sectors', []))}
+- Portfolio Size Preference: {portfolio_prefs.get('diversification_preference', 8)} holdings
+- Existing Portfolio Action: {constraints.get('existing_portfolio_action', 'modify')}
 
-Return ONLY this JSON structure:
+Return suggestions in JSON format that specifically address:
+1. How to handle existing portfolio based on user preference
+2. New investments aligned with preferred sectors and risk tolerance
+3. Implementation considering monthly additions and additional budget
+4. Risk management appropriate for user's risk tolerance
 
 {{
-  "immediate_actions": [
+  "personalized_analysis": {{
+    "alignment_with_goals": "How current portfolio aligns with user goals",
+    "risk_assessment": "Portfolio risk vs user risk tolerance",
+    "gap_analysis": "What's missing based on preferences"
+  }},
+  "existing_portfolio_action": {{
+    "recommendation": "hold/modify/partial_exit based on user preference",
+    "rationale": "Why this action suits user profile",
+    "specific_changes": ["Specific changes to make"]
+  }},
+  "new_investments": [
     {{
-      "action": "Reduce concentration risk",
-      "priority": "High",
-      "timeframe": "2 weeks",
-      "reason": "Portfolio concentrated in single holding"
+      "symbol": "STOCK_SYMBOL",
+      "sector": "Sector from preferred list",
+      "allocation_amount": "Amount in ₹",
+      "allocation_percentage": "% of total portfolio",
+      "rationale": "Why this fits user preferences",
+      "priority": "High/Medium/Low",
+      "timeline": "When to invest"
     }}
   ],
-  "new_investment_ideas": [
-    {{
-      "symbol": "HDFCBANK",
-      "sector": "Banking",
-      "suggested_allocation": 15.0,
-      "rationale": "Strong fundamentals and sector diversification"
+  "implementation_strategy": {{
+    "phase_1_immediate": {{
+      "budget_required": "₹ needed for immediate actions",
+      "actions": ["Immediate steps"],
+      "timeframe": "Timeline"
     }},
-    {{
-      "symbol": "RELIANCE",
-      "sector": "Energy",
-      "suggested_allocation": 12.0,
-      "rationale": "Large cap stability with diversification benefits"
+    "phase_2_monthly_sip": {{
+      "monthly_amount": "{goals.get('monthly_addition', 0)}",
+      "allocation_split": {{"sector1": "percentage", "sector2": "percentage"}},
+      "duration": "How long to continue SIP"
     }},
-    {{
-      "symbol": "HINDUNILVR",
-      "sector": "FMCG",
-      "suggested_allocation": 10.0,
-      "rationale": "Defensive play for portfolio stability"
+    "phase_3_additional_corpus": {{
+      "when_to_deploy": "Timing for additional ₹{constraints.get('additional_investment_budget', 0)}",
+      "deployment_strategy": "How to invest additional corpus"
     }}
-  ],
-  "risk_management": [
-    "Limit any single position to 20% of portfolio",
-    "Diversify across at least 5-6 different sectors",
-    "Set stop-loss at 15% below average cost",
-    "Review and rebalance monthly"
-  ],
-  "target_allocation": {{
-    "current_holding": 25,
-    "banking": 20,
-    "energy": 15,
-    "fmcg": 15,
-    "technology": 15,
-    "cash": 10
+  }},
+  "risk_management": {{
+    "position_sizing": "Max % per holding based on risk tolerance",
+    "stop_loss_strategy": "Appropriate for user risk profile",
+    "rebalancing_frequency": "Based on user involvement preference",
+    "emergency_fund": "Liquidity requirements based on user needs"
+  }},
+  "goal_alignment": {{
+    "target_corpus": "{goals.get('target_corpus', 5000000)}",
+    "expected_timeline": "Time to reach target",
+    "probability_of_success": "Based on expected returns and risk",
+    "adjustments_needed": "If goals seem unrealistic"
   }}
 }}
+
+Ensure all recommendations are specifically tailored to the user's preferences, constraints, and goals.
 """
     
-    def _robust_suggestions_parse(self, text: str, analysis: Dict) -> Dict:
-        """Robust parsing of suggestions with fallback strategies"""
+    def _robust_suggestions_parse(self, text: str, analysis: Dict, preferences: Dict) -> Dict:
+        """Parse suggestions with user preferences context"""
         try:
-            # Strategy 1: Clean and parse
+            # Clean and parse
             cleaned_text = self._clean_json_text(text)
             if cleaned_text:
                 return json.loads(cleaned_text)
                 
         except json.JSONDecodeError as e:
-            logger.warning(f"Suggestions JSON parse attempt 1 failed: {e}")
+            logger.warning(f"Suggestions JSON parse failed: {e}")
         
-        try:
-            # Strategy 2: Extract from code blocks
-            json_match = re.search(r'``````', text, re.DOTALL)
-            if json_match:
-                return json.loads(self._clean_json_text(json_match.group(1)))
-                
-        except json.JSONDecodeError as e:
-            logger.warning(f"Suggestions JSON parse attempt 2 failed: {e}")
+        # Fallback: Create personalized structured suggestions
+        return self._create_personalized_suggestions_fallback(analysis, preferences, text)
+    
+    def _create_personalized_suggestions_fallback(self, analysis: Dict, preferences: Dict, raw_text: str) -> Dict:
+        """Create personalized suggestions fallback based on user preferences"""
+        exec_summary = analysis.get('executive_summary', {})
+        goals = preferences.get('investment_goals', {})
+        risk_prefs = preferences.get('risk_preferences', {})
+        portfolio_prefs = preferences.get('portfolio_preferences', {})
+        constraints = preferences.get('constraints', {})
         
-        # Fallback: Create structured suggestions
-        return self._create_structured_suggestions_fallback(analysis, text)
+        # Determine suggestions based on preferences
+        preferred_sectors = portfolio_prefs.get('preferred_sectors', [])
+        avoid_sectors = constraints.get('avoid_sectors', [])
+        risk_level = risk_prefs.get('risk_score', 3)
+        additional_budget = constraints.get('additional_investment_budget', 0)
+        monthly_addition = goals.get('monthly_addition', 0)
+        
+        # Create sector-appropriate suggestions
+        investment_ideas = []
+        
+        # Conservative suggestions for lower risk tolerance
+        if risk_level <= 2:
+            safe_stocks = [
+                {"symbol": "HDFCBANK", "sector": "Banking", "rationale": "Stable large-cap banking leader"},
+                {"symbol": "HINDUNILVR", "sector": "FMCG", "rationale": "Defensive consumer goods"},
+                {"symbol": "NESTLEIND", "sector": "FMCG", "rationale": "Quality consumer brand"}
+            ]
+            investment_ideas.extend(safe_stocks)
+        
+        # Moderate to aggressive suggestions
+        elif risk_level >= 3:
+            growth_stocks = [
+                {"symbol": "RELIANCE", "sector": "Energy", "rationale": "Diversified conglomerate"},
+                {"symbol": "HCLTECH", "sector": "IT", "rationale": "Technology growth potential"},
+                {"symbol": "ASIANPAINT", "sector": "Consumer", "rationale": "Market leader in paints"}
+            ]
+            investment_ideas.extend(growth_stocks)
+        
+        # Filter based on sector preferences
+        if preferred_sectors:
+            filtered_ideas = []
+            for idea in investment_ideas:
+                if any(pref_sector.lower() in idea['sector'].lower() for pref_sector in preferred_sectors):
+                    filtered_ideas.append(idea)
+            if filtered_ideas:
+                investment_ideas = filtered_ideas
+        
+        # Add allocation amounts based on budget
+        for i, idea in enumerate(investment_ideas):
+            if additional_budget > 0:
+                idea['allocation_amount'] = additional_budget // len(investment_ideas)
+                idea['allocation_percentage'] = (idea['allocation_amount'] / (exec_summary.get('current_value', 100000) + additional_budget)) * 100
+            else:
+                idea['allocation_amount'] = monthly_addition * 3  # 3 months worth
+                idea['allocation_percentage'] = 10  # Default percentage
+            
+            idea['priority'] = "High" if i < 2 else "Medium"
+            idea['timeline'] = "Immediate" if additional_budget > 0 else "Via SIP"
+        
+        return {
+            "personalized_analysis": {
+                "alignment_with_goals": f"Current portfolio needs diversification to align with {goals.get('primary_goal', 'wealth creation')} goal",
+                "risk_assessment": f"Portfolio risk level needs adjustment for {risk_prefs.get('risk_tolerance', 'moderate')} risk tolerance",
+                "gap_analysis": f"Missing diversification across preferred sectors: {', '.join(preferred_sectors)}"
+            },
+            "existing_portfolio_action": {
+                "recommendation": constraints.get('existing_portfolio_action', 'modify'),
+                "rationale": f"Based on your preference to {constraints.get('existing_portfolio_action', 'modify')} existing holdings",
+                "specific_changes": [
+                    f"Reduce concentration to maximum {20 if risk_level <= 2 else 25}% per holding",
+                    "Gradual rebalancing over 2-3 months to minimize market impact"
+                ]
+            },
+            "new_investments": investment_ideas[:4],  # Limit to top 4 suggestions
+            "implementation_strategy": {
+                "phase_1_immediate": {
+                    "budget_required": additional_budget,
+                    "actions": [
+                        "Deploy additional corpus in chosen stocks",
+                        "Set up systematic investment plan"
+                    ],
+                    "timeframe": "Next 2 weeks"
+                },
+                "phase_2_monthly_sip": {
+                    "monthly_amount": monthly_addition,
+                    "allocation_split": {
+                        "Large Cap": 60 if risk_level <= 2 else 50,
+                        "Mid Cap": 30 if risk_level <= 2 else 35,
+                        "Small Cap": 10 if risk_level <= 2 else 15
+                    },
+                    "duration": "12-24 months for full deployment"
+                },
+                "phase_3_additional_corpus": {
+                    "when_to_deploy": "Stagger over 3-6 months" if additional_budget > 50000 else "Deploy immediately",
+                    "deployment_strategy": "Dollar cost averaging to reduce timing risk"
+                }
+            },
+            "risk_management": {
+                "position_sizing": f"Maximum {20 if risk_level <= 2 else 25}% per stock",
+                "stop_loss_strategy": f"{10 if risk_level <= 2 else 15}% stop loss based on risk tolerance",
+                "rebalancing_frequency": "Quarterly review with annual rebalancing",
+                "emergency_fund": "Maintain 6 months expenses before additional investments"
+            },
+            "goal_alignment": {
+                "target_corpus": goals.get('target_corpus', 5000000),
+                "expected_timeline": f"{((goals.get('target_corpus', 5000000) - exec_summary.get('current_value', 0)) / (monthly_addition * 12 + additional_budget)) if monthly_addition > 0 else 10:.0f} years",
+                "probability_of_success": "High" if goals.get('expected_return', 12) <= 15 else "Moderate",
+                "adjustments_needed": "Goals are realistic with consistent investing" if goals.get('expected_return', 12) <= 15 else "Consider more conservative return expectations"
+            },
+            "preferences_applied": {
+                "sectors_focused": preferred_sectors,
+                "sectors_avoided": avoid_sectors,
+                "risk_alignment": f"Suggestions match {risk_prefs.get('risk_tolerance', 'moderate')} risk profile",
+                "budget_utilization": f"₹{additional_budget:,} additional + ₹{monthly_addition:,} monthly considered"
+            },
+            "fallback_note": "Personalized recommendations based on user preferences and portfolio analysis"
+        }
+    
+    def _get_default_preferences(self) -> Dict[str, Any]:
+        """Return default preferences if none are found"""
+        return {
+            'investment_goals': {
+                'primary_goal': 'Wealth Creation',
+                'time_horizon': 'Long-term (5-10 years)',
+                'expected_return': 12.0,
+                'monthly_addition': 10000,
+                'target_corpus': 5000000
+            },
+            'risk_preferences': {
+                'risk_tolerance': 'Moderate (Balanced growth)',
+                'risk_score': 3,
+                'max_acceptable_drawdown': 15.0
+            },
+            'portfolio_preferences': {
+                'preferred_equity_allocation': 70,
+                'preferred_sectors': [],
+                'diversification_preference': 8
+            },
+            'constraints': {
+                'additional_investment_budget': 0,
+                'avoid_sectors': [],
+                'existing_portfolio_action': 'modify'
+            },
+            'basic_info': {
+                'age': 35,
+                'experience_level': 'Intermediate'
+            }
+        }
     
     def _clean_json_text(self, text: str) -> str:
         """Clean text for JSON parsing"""
@@ -166,80 +341,9 @@ Return ONLY this JSON structure:
         
         return json_text.strip()
     
-    def _create_structured_suggestions_fallback(self, analysis: Dict, raw_text: str) -> Dict:
-        """Create structured suggestions from analysis data"""
-        exec_summary = analysis.get('executive_summary', {})
-        holdings_count = exec_summary.get('number_of_holdings', 0)
-        
-        return {
-            "immediate_actions": [
-                {
-                    "action": "Diversify portfolio immediately",
-                    "priority": "High",
-                    "timeframe": "1-2 weeks",
-                    "reason": f"Portfolio has only {holdings_count} holding(s) creating excessive risk"
-                },
-                {
-                    "action": "Implement risk management framework",
-                    "priority": "High", 
-                    "timeframe": "1 week",
-                    "reason": "No systematic risk controls in place"
-                }
-            ],
-            "new_investment_ideas": [
-                {
-                    "symbol": "HDFCBANK",
-                    "sector": "Banking & Financial Services",
-                    "suggested_allocation": 15.0,
-                    "rationale": "Market leader in private banking with strong fundamentals"
-                },
-                {
-                    "symbol": "RELIANCE",
-                    "sector": "Energy & Petrochemicals",
-                    "suggested_allocation": 12.0,
-                    "rationale": "Diversified conglomerate providing stability and growth"
-                },
-                {
-                    "symbol": "HINDUNILVR",
-                    "sector": "FMCG",
-                    "suggested_allocation": 10.0,
-                    "rationale": "Defensive consumer goods for portfolio stability"
-                },
-                {
-                    "symbol": "HCLTECH",
-                    "sector": "Information Technology",
-                    "suggested_allocation": 8.0,
-                    "rationale": "Technology exposure for growth potential"
-                }
-            ],
-            "risk_management": [
-                "Reduce any single position to maximum 20% of portfolio",
-                "Diversify across minimum 5-6 different sectors",
-                "Set stop-loss orders at 15% below purchase price",
-                "Implement monthly portfolio review and rebalancing",
-                "Maintain 10% cash allocation for opportunities"
-            ],
-            "target_allocation": {
-                "existing_holdings": 25,
-                "banking_financial": 20,
-                "energy_materials": 15,
-                "fmcg_consumer": 15,
-                "technology": 15,
-                "cash_liquid": 10
-            },
-            "implementation_timeline": {
-                "week_1": "Set up risk management rules and stop-losses",
-                "week_2": "Begin diversification with banking sector addition",
-                "month_1": "Add energy and FMCG positions",
-                "month_2": "Complete technology sector addition",
-                "ongoing": "Monthly review and rebalancing"
-            },
-            "fallback_note": "Structured recommendations based on portfolio analysis"
-        }
-    
-    def _create_fallback_suggestions_response(self, analysis: Dict, error_msg: str) -> Dict[str, Any]:
-        """Create fallback suggestions response"""
-        suggestions = self._create_structured_suggestions_fallback(analysis, error_msg)
+    def _create_fallback_suggestions_response(self, analysis: Dict, preferences: Dict, error_msg: str) -> Dict[str, Any]:
+        """Create fallback suggestions response with preferences"""
+        suggestions = self._create_personalized_suggestions_fallback(analysis, preferences, error_msg)
         
         return {
             'status': 'success',

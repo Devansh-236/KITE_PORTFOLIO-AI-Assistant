@@ -45,9 +45,6 @@ dev-setup: setup ## Complete development setup including environment file
 test-connection: ## Test Kite API connection
 	$(PYTHON) -c "from kite_api.connector import test_connection; test_connection()"
 
-run: ## Run the portfolio analyzer
-	$(PYTHON) main.py
-
 clean: ## Remove virtual environment and cache files
 	@echo "$(YELLOW)Cleaning up...$(NC)"
 	rm -rf $(VENV_NAME)
@@ -74,3 +71,14 @@ format: ## Format code with black
 
 check-env: ## Check if all required environment variables are set
 	$(PYTHON) -c "from config.settings import check_config; check_config()"
+
+# Add these commands to your existing Makefile
+
+collect-preferences: ## Collect user investment preferences
+	$(PYTHON) -c "from agents.preference_agent import UserPreferenceAgent; agent = UserPreferenceAgent(); agent.execute()"
+
+show-preferences: ## Show current user preferences
+	$(PYTHON) -c "from agents.preference_agent import UserPreferenceAgent; import json; prefs = UserPreferenceAgent.load_latest_preferences(); print(json.dumps(prefs, indent=2) if prefs else 'No preferences found')"
+
+run: ## Run complete analysis with preference collection
+	$(PYTHON) main.py

@@ -1,4 +1,4 @@
-# agents/suggestion_agent.py - Enhanced version
+# agents/suggestion_agent.py
 import logging
 import json
 import re
@@ -48,7 +48,7 @@ class SuggestionEngineAgent:
             # Parse suggestions with robust error handling
             suggestions_result = self._robust_suggestions_parse(suggestions_text, analysis, user_preferences)
             
-            # Add user preferences to response
+            # CRITICAL: Add user preferences to response for report generation
             suggestions_result['user_preferences_applied'] = user_preferences
             
             logger.info(f"{self.name}: Personalized suggestions generated successfully")
@@ -221,8 +221,8 @@ Ensure all recommendations are specifically tailored to the user's preferences, 
         # Add allocation amounts based on budget
         for i, idea in enumerate(investment_ideas):
             if additional_budget > 0:
-                idea['allocation_amount'] = additional_budget // len(investment_ideas)
-                idea['allocation_percentage'] = (idea['allocation_amount'] / (exec_summary.get('current_value', 100000) + additional_budget)) * 100
+                idea['allocation_amount'] = additional_budget // max(len(investment_ideas), 1)
+                idea['allocation_percentage'] = (idea['allocation_amount'] / max(exec_summary.get('current_value', 100000) + additional_budget, 1)) * 100
             else:
                 idea['allocation_amount'] = monthly_addition * 3  # 3 months worth
                 idea['allocation_percentage'] = 10  # Default percentage
@@ -276,7 +276,7 @@ Ensure all recommendations are specifically tailored to the user's preferences, 
             },
             "goal_alignment": {
                 "target_corpus": goals.get('target_corpus', 5000000),
-                "expected_timeline": f"{((goals.get('target_corpus', 5000000) - exec_summary.get('current_value', 0)) / (monthly_addition * 12 + additional_budget)) if monthly_addition > 0 else 10:.0f} years",
+                "expected_timeline": f"{((goals.get('target_corpus', 5000000) - exec_summary.get('current_value', 0)) / max(monthly_addition * 12 + additional_budget, 1)) if monthly_addition > 0 else 10:.0f} years",
                 "probability_of_success": "High" if goals.get('expected_return', 12) <= 15 else "Moderate",
                 "adjustments_needed": "Goals are realistic with consistent investing" if goals.get('expected_return', 12) <= 15 else "Consider more conservative return expectations"
             },
@@ -350,7 +350,8 @@ Ensure all recommendations are specifically tailored to the user's preferences, 
             'suggestions': suggestions,
             'raw_suggestions': f'Fallback suggestions due to: {error_msg}',
             'timestamp': self._get_timestamp(),
-            'fallback_used': True
+            'fallback_used': True,
+            'user_preferences_applied': preferences  # CRITICAL: Include preferences
         }
     
     def _get_timestamp(self) -> str:

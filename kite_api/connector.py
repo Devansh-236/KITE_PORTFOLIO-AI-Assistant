@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class KiteAPIConnector:
-    """Direct Kite Connect API connector replacing MCP server approach"""
+    """Direct Kite Connect API connector"""
     
     def __init__(self):
         self.config = Config()

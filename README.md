@@ -62,7 +62,7 @@ portfolio-analyzer/
 
 ### 1. **Prerequisites**
 
-- **Python 3.8+** installed on your system
+- **Python 3.10+** installed on your system
 - **Zerodha Kite Connect API** credentials ([Get them here](https://developers.kite.trade/))
 - **Google Gemini API** key ([Get it here](https://aistudio.google.com/))
 - **Active Zerodha trading account** with portfolio data
@@ -327,7 +327,7 @@ make clean
 make dev-setup
 
 # Verify Python version
-python --version  # Should be 3.8+
+python --version  # Should be 3.10+
 
 # Check virtual environment
 source venv/bin/activate

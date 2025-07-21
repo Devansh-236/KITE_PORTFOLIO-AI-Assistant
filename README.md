@@ -427,5 +427,8 @@ This software is designed for educational and informational purposes. It provide
 - Follow proper KYC and investment guidelines
 - Maintain appropriate documentation for your investments
 
+### **Contact**
+- *Email*:  devanshvarshney.ai@gmail.com
+- *LinkedIn*:  https://www.linkedin.com/in/devansh-varshney-3911a027a/
 
 *Empowering retail investors with professional-grade portfolio analysis tools*

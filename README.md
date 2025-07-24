@@ -21,7 +21,7 @@ A comprehensive AI-powered portfolio analysis system that provides personalized 
 - **Sector Analysis**: Portfolio allocation vs. your preferred sectors
 - **Performance Attribution**: Detailed P&L analysis and performance tracking
 
-### 📋 **Professional Reporting**
+### 📋 **Mock Professional Reporting**
 - **Detailed Reports**: Investment-grade analysis reports in Markdown format
 - **Personalized Recommendations**: Budget-specific investment suggestions
 - **Implementation Roadmap**: Step-by-step action plans with timelines
@@ -62,7 +62,7 @@ portfolio-analyzer/
 
 ### 1. **Prerequisites**
 
-- **Python 3.8+** installed on your system
+- **Python 3.10+** installed on your system
 - **Zerodha Kite Connect API** credentials ([Get them here](https://developers.kite.trade/))
 - **Google Gemini API** key ([Get it here](https://aistudio.google.com/))
 - **Active Zerodha trading account** with portfolio data

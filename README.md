@@ -327,7 +327,7 @@ make clean
 make dev-setup
 
 # Verify Python version
-python --version  # Should be 3.8+
+python --version  # Should be 3.10+
 
 # Check virtual environment
 source venv/bin/activate
@@ -427,5 +427,8 @@ This software is designed for educational and informational purposes. It provide
 - Follow proper KYC and investment guidelines
 - Maintain appropriate documentation for your investments
 
+### **Contact**
+- *Email*:  devanshvarshney.ai@gmail.com
+- *LinkedIn*:  https://www.linkedin.com/in/devansh-varshney-3911a027a/
 
 *Empowering retail investors with professional-grade portfolio analysis tools*
